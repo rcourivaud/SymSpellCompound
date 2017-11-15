@@ -1,7 +1,7 @@
 from copy import copy
 
 
-class SugesstItem(object):
+class SuggestItem(object):
     def __init__(self):
         self.term = ""
         self.distance = 0
@@ -12,6 +12,9 @@ class SugesstItem(object):
         if isinstance(self, other.__class__):
             return self.term == other.term
         return False
+
+    def __str__(self):
+        return self.term + ":" + str(self.count) + ":" + str(self.distance)
 
     def get_hash_code(self):
         return hash(self.term)

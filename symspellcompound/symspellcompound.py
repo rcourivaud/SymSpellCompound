@@ -2,44 +2,25 @@
 
 """Main module."""
 import os
-from datetime import datetime
-
 from copy import copy
-
 import math
-from keras.preprocessing.text import text_to_word_sequence
 from pyxdameraulevenshtein import damerau_levenshtein_distance, normalized_damerau_levenshtein_distance, \
     damerau_levenshtein_distance_ndarray, normalized_damerau_levenshtein_distance_ndarray
+import time
+
+from dictionnary_item import DictionaryItem
+from typo_distance import typo_distance
+from suggest_item import SuggestItem
 
 
-# from symspellcompound.dictionnary_item import DictionaryItem
+def time_printer(func):
+    def func_wrapper(*args, **kwargs):
+        start_time = time.time()
+        res = func(*args, *kwargs)
+        print("--- {} executed in  {:.4f} s ---".format(func.__name__, time.time() - start_time))
+        return res
 
-class DictionaryItem:
-    def __init__(self):
-        self.suggestions = []
-        self.count = 0
-
-
-class SugesstItem(object):
-    def __init__(self):
-        self.term = ""
-        self.distance = 0
-        self.count = 0
-
-    def __eq__(self, other):
-        """Overrides the default implementation"""
-        if isinstance(self, other.__class__):
-            return self.term == other.term
-        return False
-
-    def __str__(self):
-        return self.term + ":" + str(self.count) + ":" + str(self.distance)
-
-    def get_hash_code(self):
-        return hash(self.term)
-
-    def shallow_copy(self):
-        return copy(self)
+    return func_wrapper
 
 
 class SySpellCompound(object):
@@ -74,6 +55,8 @@ class SySpellCompound(object):
                                      filters='!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n',
                                      lower=True,
                                      split=' ')
+
+        # @time_printer
 
     def create_dictionary_entry(self, key, language, count):
         count_threshold = 1
@@ -207,7 +190,7 @@ class SySpellCompound(object):
                     if self.verbose == 2 or len(suggestions) == 0 or distance <= suggestions[0].distance:
                         if self.verbose < 2 and len(suggestions) > 0 and suggestions[0].distance > distance:
                             suggestions = []
-                        si = SugesstItem()
+                        si = SuggestItem()
                         si.term = candidate
                         si.count = value.count
                         si.distance = distance
@@ -248,7 +231,7 @@ class SySpellCompound(object):
                         if distance <= edit_distance_max:
                             value2 = self.dictionary.get(language + suggestion, None)
                             if value2 is not None:
-                                si = SugesstItem()
+                                si = SuggestItem()
                                 si.term = suggestion
                                 si.count = self.item_list[-value2 - 1].count
                                 si.distance = distance
@@ -281,6 +264,7 @@ class SySpellCompound(object):
         else:
             return suggestions
 
+    # @time_printer
     def lookup_compound(self, input_string, language, edit_distance_max):
 
         term_list_1 = input_string.split()
@@ -301,7 +285,7 @@ class SySpellCompound(object):
                                                 edit_distance_max=edit_distance_max)
                 if len(suggestions_combi) > 0:
                     best1 = suggestion_parts[-1]
-                    best2 = SugesstItem()
+                    best2 = SuggestItem()
                     if len(suggestions) > 0:
                         best2 = suggestions[0]
                     else:
@@ -327,14 +311,14 @@ class SySpellCompound(object):
                     for j in range(1, len(term_list_1[i])):
                         part1 = term_list_1[i][0:j]
                         part2 = term_list_1[i][j]
-                        suggestion_split = SugesstItem()
+                        suggestion_split = SuggestItem()
                         suggestions1 = self.lookup(input_string=part1, language=language,
                                                    edit_distance_max=edit_distance_max)
                         if len(suggestions1) > 0:
                             if len(suggestions) > 0 and suggestions[0].term == suggestions1[0].term:
                                 # if split correction1 == einzelwort correction
                                 break
-                            suggestions2 = self.lookup(input_string=part1, language=language,
+                            suggestions2 = self.lookup(input_string=part2, language=language,
                                                        edit_distance_max=edit_distance_max)
                             if len(suggestions1) > 0:
                                 # if split correction1 == einzelwort correction
@@ -352,23 +336,24 @@ class SySpellCompound(object):
                                     break
                     if len(suggestions_split) > 0:
                         # sorted(suggestions_split, key=lambda x: 2 * x.distance - x.count, reverse=True)
-                        suggestions_split = sort_suggestion(suggestions_split, fonction=lambda x: 2 * x.distance - x.count)
+                        suggestions_split = sort_suggestion(suggestions_split,
+                                                            fonction=lambda x: 2 * x.distance - x.count)
                         suggestion_parts.append(suggestions_split[0])
                     else:
-                        si = SugesstItem()
+                        si = SuggestItem()
                         si.term = term_list_1[i]
                         si.count = 0
                         si.distance = edit_distance_max + 1
                         suggestion_parts.append(si)
 
                 else:
-                    si = SugesstItem()
+                    si = SuggestItem()
                     si.term = term_list_1[i]
                     si.count = 0
                     si.distance = edit_distance_max + 1
                     suggestion_parts.append(si)
 
-        suggestion = SugesstItem()
+        suggestion = SuggestItem()
         suggestion.count = math.inf
         s = ""
         for si in suggestion_parts:
@@ -383,7 +368,8 @@ class SySpellCompound(object):
 
 
 def distance_between_words(word1, word2):
-    return damerau_levenshtein_distance(word1, word2)
+    #return damerau_levenshtein_distance(word1, word2)
+    return typo_distance(s=word1, t=word2, layout='AZERTY')
 
 
 def sort_suggestion(list_suggest, fonction):
@@ -397,18 +383,29 @@ def to_int(s):
         return None
 
 
+def text_to_word_sequence(text,
+                          filters='!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n',
+                          lower=True, split=" "):
+    """Converts a text to a sequence of words (or tokens).
+    # Arguments
+        text: Input text (string).
+        filters: Sequence of characters to filter out.
+        lower: Whether to convert the input to lowercase.
+        split: Sentence split marker (string).
+    # Returns
+        A list of words (or tokens).
+    """
+    if lower:
+        text = text.lower()
+    translate_map = str.maketrans(filters, split * len(filters))
+
+    text = text.translate(translate_map)
+    seq = text.split(split)
+    return [i for i in seq if i]
+
+
 if __name__ == "__main__":
     ssc = SySpellCompound()
-    # print(ssc.edits(word="bonjour", edit_distance=1, deletes=set()))
-    time1 = datetime.now()
-    ssc.create_dictionary(corpus="./model_fr.txt", language="fr")
-    # ssc.create_dictionary(corpus="./model_fr.txt", language="fr")
-    time2 = datetime.now()
-    print("{} seconds to create dictionnary".format((time2 - time1).total_seconds()))
-    # print(ssc.lookup("salu", "fr", 2)[0].term)
-    time1 = datetime.now()
-    print(ssc.lookup_compound("le problm avec cete solution", "fr", 2))
-    time2 = datetime.now()
-    print((time2 - time1).total_seconds())
-    print(ssc.dictionary["frmanger"])
+    print(ssc.create_dictionary("model_fr.txt", "fr"))
 
+    print(ssc.lookup_compound(input_string="le problm avc cete solutin", language="fr", edit_distance_max=3))
