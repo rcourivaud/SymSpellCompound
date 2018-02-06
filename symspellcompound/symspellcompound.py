@@ -8,9 +8,10 @@ from pyxdameraulevenshtein import damerau_levenshtein_distance, normalized_damer
     damerau_levenshtein_distance_ndarray, normalized_damerau_levenshtein_distance_ndarray
 import time
 
-from dictionnary_item import DictionaryItem
-from typo_distance import typo_distance
-from suggest_item import SuggestItem
+from symspellcompound.errors import DistanceException
+from .tools import text_to_word_sequence, to_int, sort_suggestion
+from .typo_distance import typo_distance
+from .items import SuggestItem, DictionaryItem
 
 
 def time_printer(func):
@@ -23,8 +24,19 @@ def time_printer(func):
     return func_wrapper
 
 
+DISTANCE_MAPPER = {
+    "dameraulevenshtein": damerau_levenshtein_distance,
+    "typo": typo_distance
+}
+
+
 class SySpellCompound(object):
-    def __init__(self):
+    def __init__(self, distance="dameraulevenshtein"):
+
+        if not(distance in DISTANCE_MAPPER or callable(distance)):
+            raise DistanceException("Distance must be dameraulevenshtein, typo or a function taking two arguments "
+                                    "the two words which needs to be compared")
+
         self.enable_compound_check = True
         # false: assumes input string as single term, no compound splitting / decompounding
         # true:  supports compound splitting / decompounding with three cases:
@@ -98,11 +110,11 @@ class SySpellCompound(object):
                         self.item_list.append(di)
                         self.dictionary[language + delete] = -len(self.item_list)
                         if keyint not in di.suggestions:  # 177
-                            di = self.add_lowest_distance(item=di, suggestion=key, suggestion_int=keyint, delete=delete)
+                            _ = self.add_lowest_distance(item=di, suggestion=key, suggestion_int=keyint, delete=delete)
                     else:
                         di = self.item_list[-value2 - 1]
                         if keyint not in di.suggestions:  # 182
-                            di = self.add_lowest_distance(item=di, suggestion=key, suggestion_int=keyint, delete=delete)
+                            _ = self.add_lowest_distance(item=di, suggestion=key, suggestion_int=keyint, delete=delete)
                 else:
                     self.dictionary[language + delete] = keyint
         return result
@@ -112,7 +124,7 @@ class SySpellCompound(object):
         path = corpus
         if not os.path.isfile(path=path): return False
         for line in SySpellCompound.load_file(path=path):
-            tokens = line.split()
+            tokens = text_to_word_sequence(line)
             if len(tokens) >= 2:
                 key = tokens[term_index]
                 count = to_int(tokens[count_index])
@@ -140,7 +152,8 @@ class SySpellCompound(object):
     def add_lowest_distance(self, item, suggestion, suggestion_int, delete):
         if self.verbose < 2 and len(item.suggestions) > 0 and (
                 len(self.word_list[item.suggestions[0]]) - len(delete)) > (len(suggestion) - len(delete)):
-            item.suggestions = []
+            item.suggestions.clear()
+
         if self.verbose == 2 or len(item.suggestions) == 0 or (
                     len(self.word_list[item.suggestions[0]]) - len(delete) >= len(suggestion) - len(delete)):
             item.suggestions.append(suggestion_int)
@@ -176,13 +189,13 @@ class SySpellCompound(object):
                 0].distance:
                 break  # 302
 
-            value0 = self.dictionary.get(language + candidate, None)
-            if value0 is not None:  # 305
+            valueo = self.dictionary.get(language + candidate, None)
+            if valueo is not None:  # 305
                 value = DictionaryItem()
-                if value0 >= 0:  # 308
-                    value.suggestions.append(int(value0))
+                if valueo >= 0:  # 308
+                    value.suggestions.append(int(valueo))
                 else:
-                    value = self.item_list[-value0 - 1]
+                    value = self.item_list[-valueo - 1]
 
                 if value.count > 0 and candidate not in hashset2:  # 311
                     hashset2.add(candidate)
@@ -368,44 +381,14 @@ class SySpellCompound(object):
 
 
 def distance_between_words(word1, word2):
-    #return damerau_levenshtein_distance(word1, word2)
-    return typo_distance(s=word1, t=word2, layout='AZERTY')
-
-
-def sort_suggestion(list_suggest, fonction):
-    return list(sorted(list_suggest, key=fonction, reverse=False))
-
-
-def to_int(s):
-    try:
-        return int(s)
-    except ValueError:
-        return None
-
-
-def text_to_word_sequence(text,
-                          filters='!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n',
-                          lower=True, split=" "):
-    """Converts a text to a sequence of words (or tokens).
-    # Arguments
-        text: Input text (string).
-        filters: Sequence of characters to filter out.
-        lower: Whether to convert the input to lowercase.
-        split: Sentence split marker (string).
-    # Returns
-        A list of words (or tokens).
-    """
-    if lower:
-        text = text.lower()
-    translate_map = str.maketrans(filters, split * len(filters))
-
-    text = text.translate(translate_map)
-    seq = text.split(split)
-    return [i for i in seq if i]
+    return damerau_levenshtein_distance(word1, word2)
+    # return typo_distance(s=word1, t=word2, layout='AZERTY')
 
 
 if __name__ == "__main__":
     ssc = SySpellCompound()
-    print(ssc.create_dictionary("model_fr.txt", "fr"))
+    print(ssc.load_dictionary("fr_full.txt", language="fr", term_index=0, count_index=1))
+    print(ssc.dictionary.get("frprobleme"))
+    # print(ssc.create_dictionary("model_fr.txt", "fr"))
 
     print(ssc.lookup_compound(input_string="le problm avc cete solutin", language="fr", edit_distance_max=3))

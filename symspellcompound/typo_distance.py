@@ -1,6 +1,5 @@
-from data import INSERTION_COST, SHIFT_COST, DELETION_COST, SUBSTITUTION_COST, layoutDict, \
+from .data import INSERTION_COST, SHIFT_COST, DELETION_COST, SUBSTITUTION_COST, \
     layout_coords_dict, simple_layout
-from pyxdameraulevenshtein import damerau_levenshtein_distance
 import numpy as np
 import time
 

@@ -21,3 +21,9 @@ class SuggestItem(object):
 
     def shallow_copy(self):
         return copy(self)
+
+class DictionaryItem:
+    def __init__(self):
+        self.suggestions = []
+        self.count = 0
+
